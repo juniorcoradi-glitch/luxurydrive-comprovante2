@@ -113,13 +113,12 @@
 
   #pdf-template{
     position:absolute;top:0;left:0;
+    transform:translateX(100000px);
     width:794px;
     background:#ffffff;
     font-family:Arial,Helvetica,sans-serif;
     color:#0f2540;
     padding:56px 60px;
-    opacity:0;
-    z-index:-1;
     pointer-events:none;
   }
   #pdf-template .t-header{
@@ -480,12 +479,17 @@ document.getElementById('btnGerar').addEventListener('click', async function(){
     const imgMotorista = document.getElementById('tplFotoMotorista');
     imgVeiculo.src = fotoVeiculoData || transparentPixel();
     imgMotorista.src = fotoMotoristaData || transparentPixel();
-    imgVeiculo.style.opacity = fotoVeiculoData ? '1' : '0';
-    imgMotorista.style.opacity = fotoMotoristaData ? '1' : '0';
     if(!fotoVeiculoData){ imgVeiculo.style.background = '#eef1f5'; }
     if(!fotoMotoristaData){ imgMotorista.style.background = '#eef1f5'; }
 
-    await new Promise(r => setTimeout(r, 60));
+    await new Promise(r => requestAnimationFrame(r));
+    try {
+      await Promise.all([imgVeiculo, imgMotorista].map(function(img){
+        return img.complete ? img.decode().catch(function(){}) : new Promise(function(res){
+          img.onload = res; img.onerror = res;
+        });
+      }));
+    } catch(e) { /* segue mesmo se decode falhar em algum navegador */ }
 
     const template = document.getElementById('pdf-template');
     const canvas = await html2canvas(template, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
