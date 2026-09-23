@@ -61,7 +61,7 @@
     padding:11px 12px;
     border:1px solid var(--border);
     border-radius:9px;
-    font-size:16px; /* evita zoom automático no iOS */
+    font-size:16px;
     background:#fbfcfd;
     color:#1a2433;
     font-family:inherit;
@@ -111,14 +111,9 @@
 
   .hint{font-size:11.5px;color:var(--gray-text);margin-top:6px;line-height:1.4;}
 
-  /* ---- template oculto, usado só para renderizar o PDF ----
-     iOS Safari captura mal elementos deslocados para fora da viewport
-     via html2canvas; por isso ele fica dentro da área visível (top:0),
-     mas invisível ao usuário via opacity+z-index, e some do fluxo do
-     documento com position:absolute (não empurra o layout). */
   #pdf-template{
     position:absolute;top:0;left:0;
-    width:794px; /* A4 @ ~96dpi */
+    width:794px;
     background:#ffffff;
     font-family:Arial,Helvetica,sans-serif;
     color:#0f2540;
@@ -205,7 +200,7 @@
       <div class="photo-preview" id="previewVeiculo">Foto do<br>veículo</div>
       <div class="photo-btn">
         <label for="fotoVeiculo">Selecionar foto</label>
-        <input type="file" accept="image/*" capture="environment" id="fotoVeiculo">
+        <input type="file" accept="image/*" id="fotoVeiculo">
       </div>
     </div>
     <div class="field" style="margin-top:12px;">
@@ -326,7 +321,6 @@
   </div>
 </div>
 
-<!-- TEMPLATE oculto usado para renderizar o PDF -->
 <div id="pdf-template">
   <div class="t-header">
     <div class="t-brand">
@@ -527,10 +521,6 @@ document.getElementById('btnGerar').addEventListener('click', async function(){
     const pdfBlob = pdf.output('blob');
     const pdfFile = new File([pdfBlob], fileName, { type: 'application/pdf' });
 
-    // Caminho preferencial no iOS: Web Share API nativa. Isso abre
-    // diretamente a folha de compartilhamento do sistema (com
-    // "Salvar em Arquivos" já visível), sem depender do usuário
-    // encontrar a barra de ferramentas do Safari.
     if (isIOS && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
       try {
         await navigator.share({
@@ -538,13 +528,11 @@ document.getElementById('btnGerar').addEventListener('click', async function(){
           title: fileName
         });
       } catch (shareErr) {
-        // Usuário cancelou o compartilhamento — não é erro real, não faz nada.
         if (shareErr.name !== 'AbortError') {
           throw shareErr;
         }
       }
     } else if (isIOS) {
-      // Fallback para iOS antigo sem suporte a Web Share de arquivos.
       const blobUrl = URL.createObjectURL(pdfBlob);
       window.open(blobUrl, '_blank');
       setTimeout(function(){ URL.revokeObjectURL(blobUrl); }, 30000);
