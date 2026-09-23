@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LuxuryDrive — Gerador de Comprovante</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+  :root{
+    --navy:#0f2540;
+    --orange:#e8871e;
+    --gray-text:#8a94a3;
+    --border:#e4e8ee;
+    --bg:#f4f6f9;
+    --card:#ffffff;
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box;}
+  html{scroll-padding-top:env(safe-area-inset-top,0px);}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    background:var(--bg);
+    color:#1a2433;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .wrap{max-width:640px;margin:0 auto;padding:16px 16px 100px;}
+  header.top{
+    padding:18px 4px 14px;
+  }
+  header.top h1{
+    font-size:20px;margin:0 0 2px;color:var(--navy);letter-spacing:-0.3px;
+  }
+  header.top p{margin:0;font-size:12px;color:var(--gray-text);letter-spacing:0.5px;text-transform:uppercase;}
+
+  .section{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:16px;
+    margin-bottom:14px;
+  }
+  .section h2{
+    font-size:13px;
+    text-transform:uppercase;
+    letter-spacing:0.6px;
+    color:var(--gray-text);
+    margin:0 0 12px;
+    display:flex;align-items:center;gap:8px;
+  }
+  .field{margin-bottom:12px;}
+  .field:last-child{margin-bottom:0;}
+  label{
+    display:block;font-size:12.5px;color:#556070;margin-bottom:5px;font-weight:600;
+  }
+  input[type=text], input[type=date], input[type=time], select, textarea{
+    width:100%;
+    padding:11px 12px;
+    border:1px solid var(--border);
+    border-radius:9px;
+    font-size:16px; /* evita zoom automático no iOS */
+    background:#fbfcfd;
+    color:#1a2433;
+    font-family:inherit;
+  }
+  input:focus, select:focus, textarea:focus{
+    outline:none;border-color:var(--navy);background:#fff;
+  }
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  @media (max-width:420px){ .row2{grid-template-columns:1fr;} }
+
+  .status-options{display:flex;gap:8px;flex-wrap:wrap;}
+  .status-chip{
+    padding:8px 14px;border-radius:20px;border:1px solid var(--border);
+    font-size:13px;font-weight:600;color:#556070;background:#fbfcfd;cursor:pointer;
+  }
+  .status-chip.active{background:var(--orange);border-color:var(--orange);color:#fff;}
+
+  .photo-upload{
+    display:flex;align-items:center;gap:12px;
+  }
+  .photo-preview{
+    width:72px;height:72px;border-radius:10px;background:#eef1f5;border:1px dashed #c7cfd9;
+    display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;color:#9aa4b2;font-size:10px;text-align:center;
+  }
+  .photo-preview img{width:100%;height:100%;object-fit:cover;}
+  .photo-btn{
+    flex:1;
+  }
+  .photo-btn input[type=file]{display:none;}
+  .photo-btn label{
+    display:block;text-align:center;padding:11px 12px;border-radius:9px;
+    background:var(--navy);color:#fff;font-size:13.5px;font-weight:600;margin:0;cursor:pointer;
+  }
+
+  .actions{
+    position:fixed;left:0;right:0;bottom:0;
+    padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));
+    background:linear-gradient(to top, var(--bg) 70%, transparent);
+  }
+  .actions .inner{max-width:640px;margin:0 auto;display:flex;gap:10px;}
+  button.generate{
+    flex:1;padding:15px;border:none;border-radius:12px;background:var(--navy);color:#fff;
+    font-size:15px;font-weight:700;letter-spacing:0.2px;
+  }
+  button.generate:active{background:#0a1b30;}
+  button.generate:disabled{background:#b7c0cc;}
+
+  .hint{font-size:11.5px;color:var(--gray-text);margin-top:6px;line-height:1.4;}
+
+  /* ---- template oculto, usado só para renderizar o PDF ----
+     iOS Safari captura mal elementos deslocados para fora da viewport
+     via html2canvas; por isso ele fica dentro da área visível (top:0),
+     mas invisível ao usuário via opacity+z-index, e some do fluxo do
+     documento com position:absolute (não empurra o layout). */
+  #pdf-template{
+    position:absolute;top:0;left:0;
+    width:794px; /* A4 @ ~96dpi */
+    background:#ffffff;
+    font-family:Arial,Helvetica,sans-serif;
+    color:#0f2540;
+    padding:56px 60px;
+    opacity:0;
+    z-index:-1;
+    pointer-events:none;
+  }
+  #pdf-template .t-header{
+    display:flex;justify-content:space-between;align-items:flex-start;
+    border-bottom:1px solid #e4e8ee;padding-bottom:18px;margin-bottom:24px;
+  }
+  #pdf-template .t-brand h1{font-size:26px;margin:0;color:#0f2540;letter-spacing:-0.5px;}
+  #pdf-template .t-brand p{font-size:10px;letter-spacing:1.5px;color:#8a94a3;margin:4px 0 0;text-transform:uppercase;font-weight:700;}
+  #pdf-template .t-badge{
+    background:#fdeee0;color:#c96f14;font-size:10px;font-weight:700;letter-spacing:0.5px;
+    padding:6px 14px;border-radius:14px;text-transform:uppercase;height:fit-content;
+  }
+  #pdf-template .t-title{font-size:19px;font-weight:700;margin:0 0 18px;color:#0f2540;}
+  #pdf-template .t-card{
+    border:1px solid #e4e8ee;border-radius:12px;padding:16px 18px;margin-bottom:14px;
+  }
+  #pdf-template .t-vehicle{display:flex;gap:18px;}
+  #pdf-template .t-vehicle .photo{
+    width:230px;height:150px;border-radius:8px;object-fit:contain;background:#eef1f5;flex-shrink:0;
+    border:1px solid #e4e8ee;
+  }
+  #pdf-template .t-vehicle .info{flex:1;padding-top:2px;}
+  #pdf-template .label-sm{font-size:9.5px;color:#8a94a3;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;margin:0 0 4px;}
+  #pdf-template .val-lg{font-size:17px;font-weight:700;color:#0f2540;margin:0 0 12px;}
+  #pdf-template .kv-row{display:flex;gap:28px;margin-bottom:8px;}
+  #pdf-template .kv-row .kv{flex:1;}
+  #pdf-template .kv .k{font-size:10px;color:#8a94a3;margin:0 0 2px;}
+  #pdf-template .kv .v{font-size:13px;font-weight:700;color:#1a2433;margin:0;}
+  #pdf-template .t-driver{display:flex;align-items:center;gap:14px;}
+  #pdf-template .t-driver .photo{
+    width:56px;height:56px;border-radius:50%;object-fit:cover;background:#eef1f5;flex-shrink:0;
+  }
+  #pdf-template .t-grid4{display:grid;grid-template-columns:1fr 1fr;gap:16px 28px;}
+  #pdf-template .t-route .point{position:relative;padding-left:22px;margin-bottom:16px;}
+  #pdf-template .t-route .point:last-child{margin-bottom:0;}
+  #pdf-template .t-route .dot{
+    position:absolute;left:0;top:3px;width:11px;height:11px;border-radius:50%;border:2px solid #0f2540;
+  }
+  #pdf-template .t-route .dot.filled{background:#0f2540;}
+  #pdf-template .t-route .line{
+    position:absolute;left:5px;top:16px;width:1px;height:26px;background:#c7cfd9;
+  }
+  #pdf-template .t-footer{
+    display:flex;justify-content:space-between;font-size:9.5px;color:#8a94a3;
+    border-top:1px solid #e4e8ee;padding-top:14px;margin-top:8px;line-height:1.5;
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <h1>LuxuryDrive</h1>
+    <p>Gerador de comprovante — transporte executivo</p>
+  </header>
+
+  <div class="section">
+    <h2>Status do serviço</h2>
+    <div class="status-options" id="statusOptions">
+      <div class="status-chip active" data-value="AGENDADO">Agendado</div>
+      <div class="status-chip" data-value="EM ANDAMENTO">Em andamento</div>
+      <div class="status-chip" data-value="CONCLUÍDO">Concluído</div>
+      <div class="status-chip" data-value="CANCELADO">Cancelado</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Identificação do atendimento</h2>
+    <div class="field">
+      <label>Nome do atendimento</label>
+      <input type="text" id="fAtendimento" placeholder="Ex.: Atendimento Ana">
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Veículo</h2>
+    <div class="field photo-upload">
+      <div class="photo-preview" id="previewVeiculo">Foto do<br>veículo</div>
+      <div class="photo-btn">
+        <label for="fotoVeiculo">Selecionar foto</label>
+        <input type="file" accept="image/*" capture="environment" id="fotoVeiculo">
+      </div>
+    </div>
+    <div class="field" style="margin-top:12px;">
+      <label>Modelo do veículo</label>
+      <input type="text" id="fModelo" placeholder="Ex.: BYD I/BYD KING GL DM">
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label>Cor</label>
+        <input type="text" id="fCor" placeholder="Ex.: Branco">
+      </div>
+      <div class="field">
+        <label>Ano</label>
+        <input type="text" id="fAno" placeholder="Ex.: 2025">
+      </div>
+    </div>
+    <div class="field">
+      <label>Placa</label>
+      <input type="text" id="fPlaca" placeholder="Ex.: SXE3H10">
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Motorista executivo</h2>
+    <div class="field photo-upload">
+      <div class="photo-preview" id="previewMotorista" style="border-radius:50%;">Foto</div>
+      <div class="photo-btn">
+        <label for="fotoMotorista">Selecionar foto</label>
+        <input type="file" accept="image/*" id="fotoMotorista">
+      </div>
+      <div class="hint" style="margin-top:6px;">Toque para escolher da galeria ou tirar uma foto na hora.</div>
+    </div>
+    <div class="field" style="margin-top:12px;">
+      <label>Nome do motorista</label>
+      <input type="text" id="fMotorista" placeholder="Ex.: André Martinelli">
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Trajeto</h2>
+    <div class="row2">
+      <div class="field">
+        <label>Data de início</label>
+        <input type="date" id="fDataInicio">
+      </div>
+      <div class="field">
+        <label>Hora de início</label>
+        <input type="time" id="fHoraInicio">
+      </div>
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label>Data prevista de fim</label>
+        <input type="date" id="fDataFim">
+      </div>
+      <div class="field">
+        <label>Hora prevista de fim</label>
+        <input type="time" id="fHoraFim">
+      </div>
+    </div>
+    <div class="hint">Deixe em branco caso não haja previsão de fim (será exibido "—").</div>
+    <div class="row2" style="margin-top:12px;">
+      <div class="field">
+        <label>Tipo de trajeto</label>
+        <select id="fTipoTrajeto">
+          <option>IDA</option>
+          <option>VOLTA</option>
+          <option>IDA E VOLTA</option>
+          <option>DISPONIBILIDADE</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Forma de pagamento</label>
+        <select id="fPagamento">
+          <option>CLIENTE</option>
+          <option>EMPRESA</option>
+          <option>CORTESIA</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Rota</h2>
+    <div class="field">
+      <label>Embarque (origem)</label>
+      <textarea id="fOrigem" rows="2" placeholder="Rua, número - Bairro, Cidade - UF, CEP"></textarea>
+    </div>
+    <div class="field">
+      <label>Desembarque (destino)</label>
+      <textarea id="fDestino" rows="2" placeholder="Rua, número - Bairro, Cidade - UF, CEP"></textarea>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Dados do documento</h2>
+    <div class="row2">
+      <div class="field">
+        <label>CNPJ da empresa</label>
+        <input type="text" id="fCnpj" value="50.893.123/0001-89">
+      </div>
+      <div class="field">
+        <label>ID do transfer</label>
+        <input type="text" id="fId" placeholder="Ex.: 31CADEF8">
+      </div>
+    </div>
+    <div class="field">
+      <label>Data de emissão</label>
+      <input type="date" id="fEmissao">
+    </div>
+  </div>
+</div>
+
+<div class="actions">
+  <div class="inner" style="flex-direction:column;">
+    <p class="hint" id="iosHint" style="display:none;text-align:center;margin:0 0 8px;">No iPhone, vai abrir a tela de compartilhamento — escolha "Salvar em Arquivos".</p>
+    <button class="generate" id="btnGerar">Gerar PDF</button>
+  </div>
+</div>
+
+<!-- TEMPLATE oculto usado para renderizar o PDF -->
+<div id="pdf-template">
+  <div class="t-header">
+    <div class="t-brand">
+      <h1>LuxuryDrive</h1>
+      <p>Serviço de Transporte Executivo</p>
+    </div>
+    <div class="t-badge" id="tplBadge">AGENDADO</div>
+  </div>
+
+  <div class="t-title" id="tplTitulo">Atendimento</div>
+
+  <div class="t-card">
+    <div class="t-vehicle">
+      <img class="photo" id="tplFotoVeiculo" src="">
+      <div class="info">
+        <p class="label-sm">Veículo designado</p>
+        <p class="val-lg" id="tplModelo">—</p>
+        <div class="kv-row">
+          <div class="kv"><p class="k">Cor</p><p class="v" id="tplCor">—</p></div>
+          <div class="kv"><p class="k">Ano</p><p class="v" id="tplAno">—</p></div>
+          <div class="kv"><p class="k">Placa</p><p class="v" id="tplPlaca">—</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="t-card">
+    <div class="t-driver">
+      <img class="photo" id="tplFotoMotorista" src="">
+      <div>
+        <p class="label-sm">Motorista executivo</p>
+        <p class="val-lg" style="margin:0;" id="tplMotorista">—</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="t-card">
+    <div class="t-grid4">
+      <div class="kv"><p class="k">Início do trajeto</p><p class="v" id="tplInicio">—</p></div>
+      <div class="kv"><p class="k">Previsão de fim</p><p class="v" id="tplFim">—</p></div>
+      <div class="kv"><p class="k">Tipo de trajeto</p><p class="v" id="tplTipo">—</p></div>
+      <div class="kv"><p class="k">Forma de pagamento</p><p class="v" id="tplPagamento">—</p></div>
+    </div>
+  </div>
+
+  <div class="t-card t-route">
+    <p class="label-sm" style="margin-bottom:14px;">Trajeto e rota</p>
+    <div class="point">
+      <div class="dot"></div>
+      <div class="line"></div>
+      <p class="k" style="margin:0 0 3px;">Embarque (origem)</p>
+      <p class="v" id="tplOrigem" style="font-size:12.5px;">—</p>
+    </div>
+    <div class="point">
+      <div class="dot filled"></div>
+      <p class="k" style="margin:0 0 3px;">Desembarque (destino)</p>
+      <p class="v" id="tplDestino" style="font-size:12.5px;">—</p>
+    </div>
+  </div>
+
+  <div class="t-footer">
+    <span>LuxuryDrive Ltda. — CNPJ: <span id="tplCnpj">—</span></span>
+    <span>Emissão: <span id="tplEmissao">—</span> · ID: <span id="tplIdDoc">—</span></span>
+  </div>
+</div>
+
+<script>
+let fotoVeiculoData = "";
+let fotoMotoristaData = "";
+
+document.getElementById('fotoVeiculo').addEventListener('change', function(e){
+  handlePhoto(e, 'previewVeiculo', function(data){ fotoVeiculoData = data; });
+});
+document.getElementById('fotoMotorista').addEventListener('change', function(e){
+  handlePhoto(e, 'previewMotorista', function(data){ fotoMotoristaData = data; });
+});
+
+function handlePhoto(e, previewId, cb){
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    const dataUrl = ev.target.result;
+    cb(dataUrl);
+    const preview = document.getElementById(previewId);
+    preview.innerHTML = '<img src="'+dataUrl+'">';
+  };
+  reader.readAsDataURL(file);
+}
+
+document.querySelectorAll('.status-chip').forEach(function(chip){
+  chip.addEventListener('click', function(){
+    document.querySelectorAll('.status-chip').forEach(function(c){ c.classList.remove('active'); });
+    chip.classList.add('active');
+  });
+});
+
+function fmtDateBR(iso){
+  if(!iso) return '';
+  const parts = iso.split('-');
+  if(parts.length !== 3) return iso;
+  return parts[2] + '/' + parts[1] + '/' + parts[0];
+}
+
+function getActiveStatus(){
+  const el = document.querySelector('.status-chip.active');
+  return el ? el.dataset.value : 'AGENDADO';
+}
+
+document.getElementById('btnGerar').addEventListener('click', async function(){
+  const btn = this;
+  btn.disabled = true;
+  btn.textContent = 'Gerando...';
+
+  try{
+    const atendimento = document.getElementById('fAtendimento').value || 'Atendimento';
+    const modelo = document.getElementById('fModelo').value || '—';
+    const cor = document.getElementById('fCor').value || '—';
+    const ano = document.getElementById('fAno').value || '—';
+    const placa = document.getElementById('fPlaca').value || '—';
+    const motorista = document.getElementById('fMotorista').value || '—';
+
+    const dataInicio = document.getElementById('fDataInicio').value;
+    const horaInicio = document.getElementById('fHoraInicio').value;
+    const dataFim = document.getElementById('fDataFim').value;
+    const horaFim = document.getElementById('fHoraFim').value;
+
+    const tipoTrajeto = document.getElementById('fTipoTrajeto').value;
+    const pagamento = document.getElementById('fPagamento').value;
+    const origem = document.getElementById('fOrigem').value || '—';
+    const destino = document.getElementById('fDestino').value || '—';
+    const cnpj = document.getElementById('fCnpj').value || '—';
+    const idDoc = document.getElementById('fId').value || '—';
+    const emissao = document.getElementById('fEmissao').value;
+
+    document.getElementById('tplBadge').textContent = getActiveStatus();
+    document.getElementById('tplTitulo').textContent = atendimento;
+    document.getElementById('tplModelo').textContent = modelo;
+    document.getElementById('tplCor').textContent = cor;
+    document.getElementById('tplAno').textContent = ano;
+    document.getElementById('tplPlaca').textContent = placa;
+    document.getElementById('tplMotorista').textContent = motorista;
+
+    const inicioStr = dataInicio ? (fmtDateBR(dataInicio) + (horaInicio ? ', ' + horaInicio : '')) : '—';
+    const fimStr = dataFim ? (fmtDateBR(dataFim) + (horaFim ? ', ' + horaFim : '')) : '—';
+    document.getElementById('tplInicio').textContent = inicioStr;
+    document.getElementById('tplFim').textContent = fimStr;
+    document.getElementById('tplTipo').textContent = tipoTrajeto;
+    document.getElementById('tplPagamento').textContent = pagamento;
+    document.getElementById('tplOrigem').textContent = origem;
+    document.getElementById('tplDestino').textContent = destino;
+    document.getElementById('tplCnpj').textContent = cnpj;
+    document.getElementById('tplIdDoc').textContent = idDoc;
+    document.getElementById('tplEmissao').textContent = emissao ? (fmtDateBR(emissao) + ', ' + new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})) : '—';
+
+    const imgVeiculo = document.getElementById('tplFotoVeiculo');
+    const imgMotorista = document.getElementById('tplFotoMotorista');
+    imgVeiculo.src = fotoVeiculoData || transparentPixel();
+    imgMotorista.src = fotoMotoristaData || transparentPixel();
+    imgVeiculo.style.opacity = fotoVeiculoData ? '1' : '0';
+    imgMotorista.style.opacity = fotoMotoristaData ? '1' : '0';
+    if(!fotoVeiculoData){ imgVeiculo.style.background = '#eef1f5'; }
+    if(!fotoMotoristaData){ imgMotorista.style.background = '#eef1f5'; }
+
+    await new Promise(r => setTimeout(r, 60));
+
+    const template = document.getElementById('pdf-template');
+    const canvas = await html2canvas(template, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const imgWidth = pageWidth;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+    if(imgHeight <= pageHeight){
+      pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight);
+    } else {
+      let heightLeft = imgHeight;
+      let position = 0;
+      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+      while(heightLeft > 0){
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+    }
+
+    const fileName = 'LuxuryDrive_' + (atendimento || 'comprovante').replace(/\s+/g,'_') + '.pdf';
+
+    const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
+                  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+    const pdfBlob = pdf.output('blob');
+    const pdfFile = new File([pdfBlob], fileName, { type: 'application/pdf' });
+
+    // Caminho preferencial no iOS: Web Share API nativa. Isso abre
+    // diretamente a folha de compartilhamento do sistema (com
+    // "Salvar em Arquivos" já visível), sem depender do usuário
+    // encontrar a barra de ferramentas do Safari.
+    if (isIOS && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+      try {
+        await navigator.share({
+          files: [pdfFile],
+          title: fileName
+        });
+      } catch (shareErr) {
+        // Usuário cancelou o compartilhamento — não é erro real, não faz nada.
+        if (shareErr.name !== 'AbortError') {
+          throw shareErr;
+        }
+      }
+    } else if (isIOS) {
+      // Fallback para iOS antigo sem suporte a Web Share de arquivos.
+      const blobUrl = URL.createObjectURL(pdfBlob);
+      window.open(blobUrl, '_blank');
+      setTimeout(function(){ URL.revokeObjectURL(blobUrl); }, 30000);
+    } else {
+      const blobUrl = URL.createObjectURL(pdfBlob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(function(){ URL.revokeObjectURL(blobUrl); }, 30000);
+    }
+  } catch(err){
+    alert('Erro ao gerar o PDF: ' + err.message);
+    console.error(err);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Gerar PDF';
+  }
+});
+
+(function(){
+  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if(isIOS){
+    document.getElementById('iosHint').style.display = 'block';
+  }
+})();
+
+function transparentPixel(){
+  return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+}
+</script>
+
+</body>
+</html>
